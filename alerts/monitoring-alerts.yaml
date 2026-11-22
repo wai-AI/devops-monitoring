@@ -1,0 +1,110 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: course-monitoring-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+  annotations:
+    source: https://samber.github.io/awesome-prometheus-alerts/rules/orchestrators/kubernetes/
+spec:
+  groups:
+    - name: course.kubernetes
+      interval: 30s
+      rules:
+        - alert: KubernetesNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            monitoring_course: "true"
+          annotations:
+            summary: 'Node {{ $labels.node }} is not Ready'
+            description: 'The Ready condition has been false for 10 minutes. Check the node and kubelet.'
+        - alert: KubernetesNodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 2m
+          labels:
+            severity: critical
+            monitoring_course: "true"
+          annotations:
+            summary: 'Memory pressure on {{ $labels.node }}'
+            description: 'The node reports MemoryPressure for 2 minutes. Inspect workload memory and available capacity.'
+        - alert: KubernetesNodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 2m
+          labels:
+            severity: critical
+            monitoring_course: "true"
+          annotations:
+            summary: 'Disk pressure on {{ $labels.node }}'
+            description: 'The node reports DiskPressure for 2 minutes. Inspect storage space, inodes and container data.'
+        - alert: KubernetesPodNotHealthy
+          expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown|Failed"}) > 0
+          for: 15m
+          labels:
+            severity: critical
+            monitoring_course: "true"
+          annotations:
+            summary: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} has an unhealthy phase'
+            description: 'Pending, Unknown or Failed phase has persisted for 15 minutes. Inspect the Pod and its Events.'
+        - alert: KubernetesPodCrashLooping
+          expr: max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}[5m]) >= 1
+          for: 2m
+          labels:
+            severity: warning
+            monitoring_course: "true"
+          annotations:
+            summary: 'Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is crash looping'
+            description: 'CrashLoopBackOff appeared in the 5-minute window and the condition persisted for 2 minutes. Inspect current and previous logs.'
+        - alert: KubernetesDeploymentReplicasMismatch
+          expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+          for: 10m
+          labels:
+            severity: warning
+            monitoring_course: "true"
+          annotations:
+            summary: 'Replica mismatch in {{ $labels.namespace }}/{{ $labels.deployment }}'
+            description: 'Available replicas differ from the desired count for 10 minutes. Inspect rollout status and Pod scheduling.'
+        # Adapted from KubernetesContainerOomKiller in the linked source:
+        # use increase() for restart counters and the current last termination
+        # reason, rather than requiring a sample from exactly 10 minutes ago.
+        - alert: KubernetesContainerOomKiller
+          expr: |
+            (increase(kube_pod_container_status_restarts_total[10m]) > 0)
+            and on (namespace, pod, container, uid)
+            (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1)
+          for: 0m
+          labels:
+            severity: warning
+            monitoring_course: "true"
+          annotations:
+            summary: 'Recent restart with OOMKilled in {{ $labels.namespace }}/{{ $labels.pod }}'
+            description: 'Container {{ $labels.container }} has a restart increase in 10 minutes and its latest recorded termination reason is OOMKilled. Check its memory limit and usage.'
+    - name: course.mongodb
+      interval: 30s
+      rules:
+        - alert: CourseMongoDBUnavailable
+          expr: mongodb_up{job="mongodb-exporter"} == 0 or absent(mongodb_up{job="mongodb-exporter"})
+          for: 2m
+          labels:
+            severity: critical
+            monitoring_course: "true"
+          annotations:
+            summary: 'MongoDB monitoring does not confirm availability'
+            description: 'mongodb_up is zero or absent for 2 minutes. Check both the exporter target and MongoDB connectivity/authentication; this does not by itself identify which component failed.'
+    - name: course.lab
+      interval: 30s
+      rules:
+        # Separate lab-only version of the unhealthy-Pod condition. The main
+        # KubernetesPodNotHealthy rule above retains its source's 15m duration.
+        - alert: MonitoringLabPodNotHealthy
+          expr: sum by (namespace, pod) (kube_pod_status_phase{namespace="monitoring-lab",pod="alert-demo",phase=~"Pending|Unknown|Failed"}) > 0
+          for: 1m
+          labels:
+            severity: warning
+            monitoring_course: "true"
+            purpose: lab-test
+          annotations:
+            summary: 'Lab Pod {{ $labels.namespace }}/{{ $labels.pod }} is not running'
+            description: 'This dedicated test Pod has an unhealthy phase for 1 minute. Its CPU request intentionally exceeds node capacity; delete it after recording the firing alert.'

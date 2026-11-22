@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-demo
+  namespace: monitoring-lab
+spec:
+  restartPolicy: Always
+  containers:
+    - name: memory-hog
+      image: python:3.13-slim-bookworm
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "50m"
+        limits:
+          memory: "64Mi"
+          cpu: "250m"
+      command: ["python", "-u", "-c"]
+      args:
+        - |
+          import time
+
+          print("Waiting 60 seconds for initial metrics")
+          time.sleep(60)
+
+          print("Allocating 128 MiB with a 64 MiB limit")
+          data = bytearray(128 * 1024 * 1024)
+
+          for offset in range(0, len(data), 4096):
+              data[offset] = 1
+
+          time.sleep(3600)

@@ -1,0 +1,8 @@
+.DS_Store
+*.zip
+.env
+.env.*
+kubeconfig*
+kind-metrics-backup-*/
+__pycache__/
+*.pyc

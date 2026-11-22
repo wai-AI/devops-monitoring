@@ -1,0 +1,209 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-init
+  namespace: monitoring-lab
+data:
+  01-monitor.js: |
+    const admin = db.getSiblingDB("admin");
+    admin.createRole({
+      role: "exporterReadSystemVersion",
+      privileges: [{
+        resource: { db: "admin", collection: "system.version" },
+        actions: ["find"]
+      }],
+      roles: []
+    });
+    admin.createUser({
+      user: "monitor",
+      pwd: process.env.MONGODB_MONITOR_PASSWORD,
+      roles: [
+        { role: "clusterMonitor", db: "admin" },
+        { role: "read", db: "local" },
+        { role: "exporterReadSystemVersion", db: "admin" }
+      ]
+    });
+    db.getSiblingDB("monitoring_lab").samples.insertOne({
+      createdAt: new Date(),
+      source: "devops-monitoring"
+    });
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+  namespace: monitoring-lab
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: monitoring-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mongodb
+          image: mongo:8.0
+          args:
+            - --bind_ip_all
+            - --wiredTigerCacheSizeGB=0.25
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: root
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: root-password
+            - name: MONGODB_MONITOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: monitor-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          startupProbe:
+            tcpSocket:
+              port: mongodb
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: mongodb
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mongodb-data
+        - name: init
+          configMap:
+            name: mongodb-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: monitoring-lab
+  labels:
+    app: mongodb
+spec:
+  type: ClusterIP
+  selector:
+    app: mongodb
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-exporter
+  namespace: monitoring-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+  template:
+    metadata:
+      labels:
+        app: mongodb-exporter
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: exporter
+          image: percona/mongodb_exporter:0.53.0
+          args:
+            - --mongodb.uri=mongodb://mongodb.monitoring-lab.svc.cluster.local:27017/admin?authSource=admin&directConnection=true
+            - --collector.diagnosticdata
+            - --compatible-mode
+            - --web.listen-address=:9216
+          env:
+            - name: MONGODB_USER
+              value: monitor
+            - name: MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: monitor-password
+          ports:
+            - name: metrics
+              containerPort: 9216
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-exporter
+  namespace: monitoring-lab
+  labels:
+    app: mongodb-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: mongodb-exporter
+  ports:
+    - name: metrics
+      port: 9216
+      targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mongodb-exporter
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  jobLabel: app
+  namespaceSelector:
+    matchNames: [monitoring-lab]
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 20s

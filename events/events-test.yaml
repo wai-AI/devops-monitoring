@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: events-demo
+  namespace: monitoring-lab
+spec:
+  restartPolicy: Never
+  containers:
+    - name: pending-demo
+      image: python:3.13-slim-bookworm
+      command: ["python", "-c", "import time; time.sleep(600)"]
+      resources:
+        requests:
+          cpu: "100"
+          memory: 32Mi
+        limits:
+          cpu: "100"
+          memory: 64Mi
