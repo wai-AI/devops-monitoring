@@ -166,10 +166,3 @@ These links require the local cluster and Grafana port-forward to be running on 
 This is a local lab with one Loki replica. Its PVC depends on the kind node, and Alloy uses ephemeral storage. The configuration does not guarantee exactly-once log delivery across collector restarts.
 
 The 5XX rule detects error spikes, not missing logs. Because its queries return zero when no matching records exist, Normal alone does not prove that ingestion is healthy. Fresh application requests were checked in Grafana to verify the complete pipeline.
-
-## References
-
-- [Collect Kubernetes logs with Alloy](https://grafana.com/docs/alloy/latest/collect/logs-in-kubernetes/)
-- [Loki metric queries](https://grafana.com/docs/loki/latest/query/metric_queries/)
-- [Grafana alerting with Loki](https://grafana.com/docs/grafana/latest/datasources/loki/alerting/)
-- [Telegram integration](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/integrations/configure-telegram/)
