@@ -151,4 +151,6 @@ At the time of verification, no discovered targets had failed scrapes.
 
 ![Final scrape check](<docs/screenshots/image(20261122-180558).png>)
 
+## Task 2: Application Logging and Alerting
 
+See the [setup report and test results](logging/README.md).

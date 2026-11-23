@@ -1,0 +1,51 @@
+logging {
+  level = "info"
+}
+
+discovery.kubernetes "app" {
+  role = "pod"
+
+  namespaces {
+    names = ["logging-lab"]
+  }
+
+  selectors {
+    role  = "pod"
+    label = "app=logging-demo"
+  }
+}
+
+discovery.relabel "app" {
+  targets = discovery.kubernetes.app.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    target_label  = "app"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "container"
+  }
+}
+
+loki.source.kubernetes "app" {
+  targets    = discovery.relabel.app.output
+  forward_to = [loki.write.logs.receiver]
+}
+
+loki.write "logs" {
+  endpoint {
+    url = "http://loki.logging-lab.svc.cluster.local:3100/loki/api/v1/push"
+  }
+}

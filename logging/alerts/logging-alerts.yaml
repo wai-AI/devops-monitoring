@@ -1,0 +1,103 @@
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: logging-alerts
+      folder: Application Logging
+      interval: 30s
+      rules:
+        - uid: fg4x6fqxny03ka
+          title: LoggingDemoHigh5xxRate
+          condition: B
+          data:
+            - refId: A
+              queryType: instant
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: dg4x49ky9v8xsf
+              model:
+                datasource:
+                    type: loki
+                    uid: dg4x49ky9v8xsf
+                editorMode: code
+                expr: |-
+                    sum(
+                      count_over_time(
+                        {namespace="logging-lab",app="logging-demo"}
+                        | json
+                        | status >= 500
+                        | status < 600
+                        | __error__="" [2m]
+                      )
+                    ) or vector(0)
+                hide: false
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                queryType: instant
+                refId: A
+            - refId: B
+              queryType: instant
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: dg4x49ky9v8xsf
+              model:
+                datasource:
+                    type: loki
+                    uid: dg4x49ky9v8xsf
+                editorMode: code
+                expr: |-
+                    sum(
+                      count_over_time(
+                        {namespace="logging-lab",app="logging-demo"}
+                        | json
+                        | status >= 100
+                        | status < 600
+                        | __error__="" [2m]
+                      )
+                    ) or vector(0)
+                hide: false
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                queryType: instant
+                refId: B
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: ($B >= 20) && ($A > 0.05 * $B)
+                hide: false
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: math
+          noDataState: NoData
+          execErrState: Error
+          for: 1m
+          annotations:
+            description: More than 5% of HTTP responses were 5XX over 2 minutes, with at least 20 requests. The condition persisted for 1 minute.
+            summary: 'logging-demo: HTTP 5XX rate exceeds 5%'
+          labels:
+            severity: warning
+          isPaused: false
+          notification_settings:
+            receiver: telegram-devops
